@@ -87,7 +87,7 @@ tailwind.config = {
   </section>
 
   <section data-tab="caja" class="tabpane hidden">
-    <div class="px-4 pt-3"><select id="selJornada" class="fld text-sm lg:max-w-xs"></select></div>
+    <div class="px-4 pt-3 space-y-2 lg:max-w-xs"><div class="flex gap-1 p-1 bg-ink-800 border border-ink-600 rounded-xl"><button data-caja="noche" class="flex-1 py-2 rounded-lg text-xs font-bold">Por noche</button><button data-caja="mes" class="flex-1 py-2 rounded-lg text-xs font-bold">Por mes</button></div><select id="selJornada" class="fld text-sm"></select><select id="selMes" class="fld text-sm hidden"></select></div>
     <div id="cajaBody" class="px-4 pt-3 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3 lg:items-start"></div>
   </section>
 
@@ -165,9 +165,9 @@ const ESTADOS = {
 };
 
 /* ---------- estado en memoria ---------- */
-let DATA  = { pedidos:[], productos:[], costos:[] };
+let DATA  = { pedidos:[], productos:[], costos:[], cierres:[] };
 let CFG   = { envio:0, negocioId:'', fb:null };
-let UI    = { tab:'pedidos', filtro:'activos', jornadaCaja:null, borrador:null };
+let UI    = { tab:'pedidos', filtro:'activos', jornadaCaja:null, mesCaja:null, cajaVista:'noche', borrador:null };
 let CLOUD = { on:false, db:null, fns:null, unsubs:[], error:null };
 
 /* ---------- helpers ---------- */
@@ -225,6 +225,7 @@ function loadLocal(){
     DATA.pedidos   = JSON.parse(localStorage.getItem(K('pedidos'))   || '[]');
     DATA.productos = JSON.parse(localStorage.getItem(K('productos')) || '[]');
     DATA.costos    = JSON.parse(localStorage.getItem(K('costos'))    || '[]');
+    DATA.cierres   = JSON.parse(localStorage.getItem(K('cierres'))   || '[]');
     CFG = Object.assign(CFG, JSON.parse(localStorage.getItem(K('config')) || '{}'));
   } catch(e){ console.warn('No se pudo leer el almacenamiento local', e); }
   if(!DATA.productos.length){
@@ -286,6 +287,46 @@ function resumenJornada(j){
     ticket: ps.length ? ventas / ps.length : 0
   };
 }
+
+/* Cuánto se vendió de cada box: unidades y plata, de mayor a menor. */
+function ventasPorProducto(pedidos){
+  const m = new Map();
+  pedidos.forEach(p => (p.items || []).forEach(i => {
+    const x = m.get(i.nombre) || { nombre:i.nombre, cat:i.cat, cant:0, total:0 };
+    x.cant += i.cant;
+    x.total += i.precio * i.cant;
+    m.set(i.nombre, x);
+  }));
+  return Array.from(m.values()).sort((a,b) => b.total - a.total);
+}
+
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const mesLabel = m => { const p = m.split('-'); return MESES[Number(p[1]) - 1] + ' ' + p[0]; };
+
+function mesesConDatos(){
+  return Array.from(new Set(jornadasConDatos().map(j => j.slice(0, 7)))).sort().reverse();
+}
+
+function jornadasDelMes(mes){
+  return jornadasConDatos().filter(j => j.indexOf(mes) === 0 && resumenJornada(j).cant > 0).sort();
+}
+
+/* Suma todas las noches del mes y arma el ranking de productos del período. */
+function resumenMes(mes){
+  const js = jornadasDelMes(mes);
+  const t = { ventas:0, efectivo:0, transf:0, sinPago:0, costos:0, neto:0, cant:0, boxes:0, noches:js.length, js:js };
+  js.forEach(j => {
+    const r = resumenJornada(j);
+    ['ventas','efectivo','transf','sinPago','costos','neto','cant','boxes'].forEach(k => t[k] += r[k]);
+  });
+  t.ticket = t.cant ? t.ventas / t.cant : 0;
+  t.mejorNoche = js.slice().sort((a,b) => resumenJornada(b).neto - resumenJornada(a).neto)[0] || null;
+  const pedidos = js.reduce((acc,j) => acc.concat(pedidosDe(j).filter(p => p.estado !== 'cancelado')), []);
+  t.productos = ventasPorProducto(pedidos);
+  return t;
+}
+
+const cierreDe = j => DATA.cierres.find(c => c.jornada === j);
 
 /* ---------- clientes conocidos (autocompletado) ---------- */
 function clientesConocidos(){
@@ -471,19 +512,62 @@ function cardReparto(p){
 /* ------------------------------ CAJA ------------------------------ */
 
 function renderCaja(){
+  const enMes = UI.cajaVista === 'mes';
+  $('#selJornada').classList.toggle('hidden', enMes);
+  $('#selMes').classList.toggle('hidden', !enMes);
+  ['noche','mes'].forEach(v => {
+    const b = $('[data-caja="' + v + '"]');
+    b.className = 'flex-1 py-2 rounded-lg text-xs font-bold ' +
+      (UI.cajaVista === v ? 'bg-dr-500 text-ink-900' : 'text-zinc-300');
+  });
+  if(enMes) renderCajaMes(); else renderCajaNoche();
+}
+
+const filaCaja = (l, v, cls) => '<div class="flex justify-between items-center py-2 border-b border-ink-700 last:border-0">' +
+  '<span class="text-sm text-zinc-300">' + esc(l) + '</span>' +
+  '<span class="text-sm font-bold tabular ' + (cls || '') + '">' + esc(v) + '</span></div>';
+
+/* Ranking de box vendidos, con barra proporcional al que más facturó. */
+function rankingHTML(productos, titulo){
+  if(!productos.length) return '';
+  const max = productos[0].total || 1;
+  return '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
+    '<p class="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2">' + esc(titulo) + '</p>' +
+    productos.map(p =>
+      '<div class="py-1.5">' +
+        '<div class="flex justify-between items-baseline gap-2">' +
+          '<span class="text-sm font-semibold truncate">' + esc(p.nombre) + '</span>' +
+          '<span class="text-xs text-zinc-400 tabular shrink-0">' + p.cant + ' × · <span class="text-zinc-200 font-bold">' + money(p.total) + '</span></span>' +
+        '</div>' +
+        '<div class="mt-1 h-1.5 rounded-full bg-ink-700 overflow-hidden">' +
+          '<div class="h-full rounded-full ' + (p.cat === 'SALSAS' ? 'bg-ink-500' : 'bg-dr-500') + '" style="width:' + Math.max(3, Math.round(p.total / max * 100)) + '%"></div>' +
+        '</div>' +
+      '</div>').join('') +
+  '</div>';
+}
+
+/* ---- vista de una noche ---- */
+function renderCajaNoche(){
   const js = jornadasConDatos();
-  if(!UI.jornadaCaja || !js.includes(UI.jornadaCaja)) UI.jornadaCaja = js[0];
+  if(!UI.jornadaCaja || js.indexOf(UI.jornadaCaja) < 0) UI.jornadaCaja = js[0];
   const j = UI.jornadaCaja;
   $('#selJornada').innerHTML = js.map(x => '<option value="' + x + '"' + (x === j ? ' selected' : '') + '>' + esc(jornadaLabel(x)) + '</option>').join('');
 
   const r = resumenJornada(j);
   const costos = DATA.costos.filter(c => c.jornada === j).sort((a,b) => b.ts - a.ts);
-
-  const fila = (l, v, cls) => '<div class="flex justify-between items-center py-2 border-b border-ink-700 last:border-0">' +
-    '<span class="text-sm text-zinc-300">' + esc(l) + '</span>' +
-    '<span class="text-sm font-bold tabular ' + (cls || '') + '">' + esc(v) + '</span></div>';
+  const cierre = cierreDe(j);
+  const pendientes = pedidosDe(j).filter(p => ['nuevo','cocina','camino'].indexOf(p.estado) >= 0).length;
 
   $('#cajaBody').innerHTML =
+    (cierre
+      ? '<div class="lg:col-span-2 flex items-center gap-2 rounded-xl border border-ok/30 bg-ok/10 px-3 py-2">' +
+          '<span class="text-ok text-sm">✓</span>' +
+          '<p class="text-xs text-zinc-200 flex-1">Noche cerrada el ' + esc(jornadaLabel(jornadaDe(cierre.ts)).replace(' · hoy','')) + ' a las ' + hora(cierre.ts) + '</p>' +
+          (cierre.resumen && Math.round(cierre.resumen.neto) !== Math.round(r.neto)
+            ? '<span class="text-[10px] text-warn font-bold">cambió desde el cierre</span>' : '') +
+        '</div>'
+      : '') +
+
     '<div class="lg:col-span-2 bg-gradient-to-br from-dr-500 to-dr-600 rounded-2xl p-4 lg:p-6 text-ink-900">' +
       '<p class="text-xs font-bold uppercase tracking-wide opacity-70">Ganancia de la noche</p>' +
       '<p class="text-4xl font-black tabular leading-none mt-1">' + money(r.neto) + '</p>' +
@@ -498,10 +582,10 @@ function renderCaja(){
 
     '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
       '<p class="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-1">Cómo entró la plata</p>' +
-      fila('💵 Efectivo', money(r.efectivo)) +
-      fila('📱 Transferencia', money(r.transf)) +
-      (r.sinPago ? fila('⚠️ Sin pago cargado', money(r.sinPago), 'text-bad') : '') +
-      fila('Total vendido', money(r.ventas), 'text-dr-400') +
+      filaCaja('💵 Efectivo', money(r.efectivo)) +
+      filaCaja('📱 Transferencia', money(r.transf)) +
+      (r.sinPago ? filaCaja('⚠️ Sin pago cargado', money(r.sinPago), 'text-bad') : '') +
+      filaCaja('Total vendido', money(r.ventas), 'text-dr-400') +
     '</div>' +
 
     '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
@@ -519,31 +603,121 @@ function renderCaja(){
         : '<p class="text-xs text-zinc-500 py-2">Todavía no cargaste costos (pollo, papas, aceite, nafta, envases…).</p>') +
     '</div>' +
 
-    resumenSemanaHTML() +
+    rankingHTML(ventasPorProducto(r.ps), 'Qué se vendió esta noche') +
 
-    '<button id="btnCompartirCierre" class="lg:col-span-2 w-full py-3 rounded-xl bg-ink-700 border border-ink-600 font-bold text-sm active:bg-ink-600 hover:bg-ink-600">Compartir cierre por WhatsApp</button>';
+    '<div class="lg:col-span-2 grid grid-cols-1 lg:grid-cols-2 gap-2">' +
+      '<button id="btnCompartirCierre" class="w-full py-3 rounded-xl bg-ink-700 border border-ink-600 font-bold text-sm active:bg-ink-600 hover:bg-ink-600">Compartir cierre por WhatsApp</button>' +
+      (cierre
+        ? '<button data-reabrir="' + j + '" class="w-full py-3 rounded-xl border border-ink-600 font-bold text-sm text-zinc-300 active:bg-ink-700 hover:bg-ink-700">Reabrir la noche</button>'
+        : '<button data-cerrar="' + j + '" class="w-full py-3 rounded-xl bg-ok text-ink-900 font-extrabold text-sm active:scale-95 transition">Terminar la jornada' +
+          (pendientes ? ' <span class="font-bold opacity-70">(' + pendientes + ' sin entregar)</span>' : '') + '</button>') +
+    '</div>';
 }
 
-function resumenSemanaHTML(){
-  const js = jornadasConDatos().slice(0, 3).filter(j => resumenJornada(j).cant > 0);
-  if(js.length < 2) return '';
-  const t = js.reduce((a,j) => {
-    const r = resumenJornada(j);
-    return { ventas:a.ventas + r.ventas, costos:a.costos + r.costos, neto:a.neto + r.neto, cant:a.cant + r.cant };
-  }, { ventas:0, costos:0, neto:0, cant:0 });
-  return '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
-    '<p class="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2">Últimas ' + js.length + ' noches</p>' +
-    js.map(j => {
-      const r = resumenJornada(j);
-      return '<div class="flex justify-between items-center py-1.5 border-b border-ink-700 last:border-0">' +
-        '<span class="text-sm text-zinc-300">' + esc(jornadaLabel(j).replace(' · hoy', '')) + '</span>' +
-        '<span class="text-xs text-zinc-500 tabular">' + r.cant + ' ped.</span>' +
-        '<span class="text-sm font-bold tabular">' + money(r.neto) + '</span></div>';
-    }).join('') +
-    '<div class="flex justify-between items-center pt-2 mt-1 border-t border-ink-600">' +
-      '<span class="text-sm font-bold">Total</span>' +
-      '<span class="text-sm font-black tabular text-dr-400">' + money(t.neto) + '</span></div>' +
-  '</div>';
+/* ---- vista del mes ---- */
+function renderCajaMes(){
+  const ms = mesesConDatos();
+  if(!UI.mesCaja || ms.indexOf(UI.mesCaja) < 0) UI.mesCaja = ms[0];
+  const mes = UI.mesCaja;
+  $('#selMes').innerHTML = ms.map(x => '<option value="' + x + '"' + (x === mes ? ' selected' : '') + '>' + esc(mesLabel(x)) + '</option>').join('');
+
+  const t = resumenMes(mes);
+
+  if(!t.noches){
+    $('#cajaBody').innerHTML = '<div class="lg:col-span-2">' + vacio('Todavía no hay noches en ' + mesLabel(mes), 'Se van sumando solas a medida que cargan pedidos.') + '</div>';
+    return;
+  }
+
+  $('#cajaBody').innerHTML =
+    '<div class="lg:col-span-2 bg-gradient-to-br from-dr-500 to-dr-600 rounded-2xl p-4 lg:p-6 text-ink-900">' +
+      '<p class="text-xs font-bold uppercase tracking-wide opacity-70">Ganancia de ' + esc(mesLabel(mes)) + '</p>' +
+      '<p class="text-4xl font-black tabular leading-none mt-1">' + money(t.neto) + '</p>' +
+      '<p class="text-xs font-semibold mt-1.5 opacity-80">' + money(t.ventas) + ' vendido − ' + money(t.costos) + ' de costos · ' + t.noches + (t.noches === 1 ? ' noche' : ' noches') + '</p>' +
+    '</div>' +
+
+    '<div class="lg:col-span-2 grid grid-cols-3 gap-2">' +
+      tile('Pedidos', String(t.cant), t.boxes + ' box') +
+      tile('Ticket prom.', money(t.ticket), 'por pedido') +
+      tile('Por noche', money(t.noches ? t.neto / t.noches : 0), 'ganancia promedio') +
+    '</div>' +
+
+    '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
+      '<p class="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-1">Cómo entró la plata</p>' +
+      filaCaja('💵 Efectivo', money(t.efectivo)) +
+      filaCaja('📱 Transferencia', money(t.transf)) +
+      (t.sinPago ? filaCaja('⚠️ Sin pago cargado', money(t.sinPago), 'text-bad') : '') +
+      filaCaja('Total vendido', money(t.ventas), 'text-dr-400') +
+      filaCaja('Costos', '− ' + money(t.costos), 'text-zinc-400') +
+    '</div>' +
+
+    '<div class="bg-ink-800 border border-ink-600 rounded-2xl p-3">' +
+      '<p class="text-xs font-bold uppercase tracking-wide text-zinc-400 mb-2">Noche por noche</p>' +
+      t.js.slice().reverse().map(j => {
+        const r = resumenJornada(j);
+        const esMejor = j === t.mejorNoche;
+        return '<div data-vernoche="' + j + '" class="flex justify-between items-center gap-2 py-2 border-b border-ink-700 last:border-0 active:opacity-60">' +
+          '<span class="text-sm text-zinc-300 flex-1 truncate">' + esc(jornadaLabel(j).replace(' · hoy','')) +
+            (esMejor && t.noches > 1 ? ' <span class="text-[10px] text-dr-500 font-bold">mejor</span>' : '') +
+            (cierreDe(j) ? '' : ' <span class="text-[10px] text-zinc-600">sin cerrar</span>') + '</span>' +
+          '<span class="text-xs text-zinc-500 tabular shrink-0">' + r.cant + ' ped.</span>' +
+          '<span class="text-sm font-bold tabular shrink-0 w-20 text-right">' + money(r.neto) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+
+    rankingHTML(t.productos, 'Qué se vendió en ' + mesLabel(mes)) +
+
+    '<button id="btnCompartirMes" class="lg:col-span-2 w-full py-3 rounded-xl bg-ink-700 border border-ink-600 font-bold text-sm active:bg-ink-600 hover:bg-ink-600">Compartir resumen del mes</button>';
+}
+
+/* Cerrar la jornada no borra ni congela nada: deja la marca de que esa noche se
+   dio por terminada, junto a una foto de los números de ese momento. */
+function cerrarJornada(j){
+  const r = resumenJornada(j);
+  const pendientes = pedidosDe(j).filter(p => ['nuevo','cocina','camino'].indexOf(p.estado) >= 0);
+  const sinPago = r.ps.filter(p => !p.pago);
+
+  const avisos = [];
+  if(pendientes.length) avisos.push('• ' + pendientes.length + (pendientes.length === 1 ? ' pedido sin entregar' : ' pedidos sin entregar'));
+  if(sinPago.length) avisos.push('• ' + sinPago.length + (sinPago.length === 1 ? ' pedido sin forma de pago' : ' pedidos sin forma de pago') + ' (' + money(r.sinPago) + ')');
+
+  const txt = avisos.length
+    ? 'Ojo, antes de cerrar:\n\n' + avisos.join('\n') + '\n\n¿Cerrar la noche igual?'
+    : '¿Terminar la jornada?\n\nGanancia: ' + money(r.neto) + '\n' + r.cant + ' pedidos · ' + money(r.ventas) + ' vendido';
+  if(!confirm(txt)) return;
+
+  putDoc('cierres', {
+    id: j, jornada: j, ts: Date.now(),
+    resumen: { ventas:r.ventas, costos:r.costos, neto:r.neto, cant:r.cant,
+               efectivo:r.efectivo, transf:r.transf, boxes:r.boxes }
+  });
+  toast('Jornada cerrada · ' + money(r.neto));
+}
+
+function textoCierreNoche(j){
+  const r = resumenJornada(j);
+  return ['*Dr Chicken* · cierre ' + jornadaLabel(j).replace(' · hoy',''), '',
+    'Pedidos: ' + r.cant + '  (' + r.boxes + ' box)',
+    'Efectivo: ' + money(r.efectivo),
+    'Transferencia: ' + money(r.transf),
+    'Vendido: ' + money(r.ventas),
+    'Costos: ' + money(r.costos),
+    '', 'Ganancia: ' + money(r.neto)].join('\n');
+}
+
+function textoResumenMes(mes){
+  const t = resumenMes(mes);
+  const l = ['*Dr Chicken* · ' + mesLabel(mes), '',
+    t.noches + (t.noches === 1 ? ' noche' : ' noches') + ' · ' + t.cant + ' pedidos',
+    'Vendido: ' + money(t.ventas),
+    'Efectivo: ' + money(t.efectivo) + '  |  Transferencia: ' + money(t.transf),
+    'Costos: ' + money(t.costos),
+    '', 'Ganancia: ' + money(t.neto), ''];
+  if(t.productos.length){
+    l.push('Lo más vendido:');
+    t.productos.slice(0, 5).forEach(p => l.push('  ' + p.cant + '× ' + p.nombre + '  ' + money(p.total)));
+  }
+  return l.join('\n');
 }
 
 /* ------------------------------ MENÚ ------------------------------ */
@@ -930,7 +1104,7 @@ function importarDatos(file){
       const j = JSON.parse(fr.result);
       if(!j.DATA) throw new Error('formato');
       DATA = Object.assign(DATA, j.DATA);
-      ['pedidos','productos','costos'].forEach(saveLocal);
+      ['pedidos','productos','costos','cierres'].forEach(saveLocal);
       cerrarSheet(); render(); toast('Datos importados');
     } catch(e){ toast('El archivo no es válido'); }
   };
@@ -983,7 +1157,7 @@ async function conectarCloud(silencioso){
     CLOUD.fns = fs;
     CLOUD.on = true;
 
-    ['pedidos','productos','costos'].forEach(col => {
+    ['pedidos','productos','costos','cierres'].forEach(col => {
       const ref = fs.collection(CLOUD.db, 'negocios', CFG.negocioId, col);
       const unsub = fs.onSnapshot(ref, snap => {
         if(snap.empty && DATA[col].length){ DATA[col].forEach(o => cloudPut(col, o)); return; }
@@ -1150,16 +1324,32 @@ document.addEventListener('click', ev => {
     return;
   }
 
-  if(cl('#btnCompartirCierre')){
-    const j = UI.jornadaCaja || jornadaHoy();
-    const r = resumenJornada(j);
-    compartir(['*Dr Chicken* · cierre ' + jornadaLabel(j).replace(' · hoy',''), '',
-      'Pedidos: ' + r.cant + '  (' + r.boxes + ' box)',
-      'Efectivo: ' + money(r.efectivo),
-      'Transferencia: ' + money(r.transf),
-      'Vendido: ' + money(r.ventas),
-      'Costos: ' + money(r.costos),
-      '', 'Ganancia: ' + money(r.neto)].join('\n'));
+  if(cl('#btnCompartirCierre')){ compartir(textoCierreNoche(UI.jornadaCaja || jornadaHoy())); return; }
+  if(cl('#btnCompartirMes')){ compartir(textoResumenMes(UI.mesCaja)); return; }
+
+  const verCaja = cl('[data-caja]');
+  if(verCaja){ UI.cajaVista = verCaja.dataset.caja; renderCaja(); return; }
+
+  const cerrar = cl('[data-cerrar]');
+  if(cerrar){ cerrarJornada(cerrar.dataset.cerrar); return; }
+
+  const reabrir = cl('[data-reabrir]');
+  if(reabrir){
+    const c = cierreDe(reabrir.dataset.reabrir);
+    if(c && confirm('¿Reabrir esta noche para poder seguir cargando o corregir?')){
+      delDoc('cierres', c.id);
+      toast('Noche reabierta');
+    }
+    return;
+  }
+
+  /* Desde el listado del mes se salta al detalle de esa noche. */
+  const verNoche = cl('[data-vernoche]');
+  if(verNoche){
+    UI.jornadaCaja = verNoche.dataset.vernoche;
+    UI.cajaVista = 'noche';
+    renderCaja();
+    window.scrollTo(0, 0);
     return;
   }
 
@@ -1198,6 +1388,7 @@ document.addEventListener('click', ev => {
 
 document.addEventListener('change', ev => {
   if(ev.target.id === 'selJornada'){ UI.jornadaCaja = ev.target.value; renderCaja(); }
+  if(ev.target.id === 'selMes'){ UI.mesCaja = ev.target.value; renderCaja(); }
   if(ev.target.id === 'cfFile' && ev.target.files[0]) importarDatos(ev.target.files[0]);
   if(ev.target.id === 'cfEnvio') guardarAjustes();
 });
