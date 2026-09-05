@@ -40,21 +40,24 @@ pedidos. Para que los dos vean lo mismo al instante:
 2. Dentro del proyecto: **Compilación → Firestore Database → Crear base de datos**,
    modo producción, ubicación `southamerica-east1`.
 3. En **Configuración del proyecto** (el engranaje) → *Tus apps* → ícono `</>` para
-   registrar una app web. Firebase muestra un bloque `const firebaseConfig = {…}`.
-   Copiar **solo las llaves**, desde `{` hasta `}`.
+   registrar una app web (sin marcar Hosting). Firebase muestra un bloque de código:
+   copiarlo entero, tal cual, no hace falta acomodar nada.
 4. En la app: engranaje arriba a la derecha → pegar eso en *Configuración de
-   Firebase*, poner el mismo **código del negocio** en los dos celulares (algo largo
-   y difícil de adivinar, por ejemplo `drchicken-libertad-7k3m9`) y tocar *Conectar*.
-   El puntito del header se pone verde y dice "En línea".
-5. En **Firestore → Reglas**, pegar esto y publicar, cambiando el código por el que
-   usaron en el paso 4:
+   Firebase*, poner el mismo **código del negocio** en todos los dispositivos y tocar
+   *Conectar*. El puntito del header se pone verde y dice "En línea".
+
+   El código del negocio es la llave de la base: inventá uno largo y difícil de
+   adivinar, y **no lo publiques en ningún lado**. Acá va como `TU-CODIGO-SECRETO`
+   justamente porque este archivo es público.
+5. En **Firestore → Reglas**, pegar esto y publicar, con el código del paso 4 en
+   lugar de `TU-CODIGO-SECRETO`:
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /negocios/{negocio}/{documento=**} {
-      allow read, write: if negocio == 'drchicken-libertad-7k3m9';
+      allow read, write: if negocio == 'TU-CODIGO-SECRETO';
     }
   }
 }
@@ -62,7 +65,7 @@ service cloud.firestore {
 
 Sin ese último paso la base queda abierta a cualquiera. El código del negocio hace
 de llave, por eso conviene que sea largo: nunca se publica en el código de la app,
-se escribe a mano en cada celular.
+se escribe a mano en cada dispositivo.
 
 ## Instalarla en el celular
 

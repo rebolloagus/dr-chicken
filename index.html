@@ -840,7 +840,7 @@ function abrirAjustes(){
         '<label class="lbl">Código del negocio</label>' +
         '<input id="cfNegocio" class="fld mb-2.5" placeholder="drchicken-libertad" value="' + esc(CFG.negocioId || '') + '">' +
         '<label class="lbl">Configuración de Firebase</label>' +
-        '<textarea id="cfFb" class="fld font-mono text-[11px]" rows="6" placeholder=\'{"apiKey":"…","authDomain":"…","projectId":"…","appId":"…"}\'>' + esc(CFG.fb ? JSON.stringify(CFG.fb) : '') + '</textarea>' +
+        '<textarea id="cfFb" class="fld font-mono text-[11px]" rows="6" placeholder="Pegá el bloque tal cual lo copiaste de Firebase">' + esc(CFG.fb ? JSON.stringify(CFG.fb) : '') + '</textarea>' +
         '<div class="flex gap-2 mt-2.5">' +
           '<button id="cfConectar" class="flex-1 py-2.5 rounded-xl bg-dr-500 text-ink-900 font-extrabold text-sm active:scale-95 transition">' + (conectado ? 'Reconectar' : 'Conectar') + '</button>' +
           (conectado ? '<button id="cfDesconectar" class="px-4 py-2.5 rounded-xl border border-ink-600 font-bold text-sm active:bg-ink-700">Desconectar</button>' : '') +
@@ -864,6 +864,24 @@ function abrirAjustes(){
 
       '<p class="text-[11px] text-zinc-600 text-center pt-2">Dr Chicken · Libertad · ' + HORARIO.dias + ' ' + HORARIO.desde + ' a ' + HORARIO.hasta + '</p>' +
     '</div>');
+}
+
+/* Acepta la configuracion pegada tal cual la da Firebase: el bloque entero con
+   los import, el objeto JS con las claves sin comillas, o JSON limpio. */
+function parseConfigFirebase(txt){
+  txt = String(txt || '').trim();
+  if(!txt) return null;
+  const k = txt.indexOf('firebaseConfig');
+  const desde = txt.indexOf('{', k >= 0 ? k : 0);
+  if(desde < 0) return null;
+  const hasta = txt.indexOf('}', desde);
+  if(hasta < 0) return null;
+  const cuerpo = txt.slice(desde + 1, hasta);
+  const out = {};
+  const re = /["']?([A-Za-z_$][A-Za-z0-9_$]*)["']?\s*:\s*["']([^"']*)["']/g;
+  let m;
+  while((m = re.exec(cuerpo))) out[m[1]] = m[2];
+  return (out.apiKey && out.projectId) ? out : null;
 }
 
 function guardarAjustes(){
@@ -1080,8 +1098,9 @@ document.addEventListener('click', ev => {
   if(cl('#cfConectar')){
     guardarAjustes();
     CFG.negocioId = $('#cfNegocio').value.trim();
-    try { CFG.fb = JSON.parse($('#cfFb').value.trim()); }
-    catch(e){ return toast('La configuración de Firebase no es un JSON válido'); }
+    const fb = parseConfigFirebase($('#cfFb').value);
+    if(!fb) return toast('No encontré la config de Firebase en ese texto');
+    CFG.fb = fb;
     if(!CFG.negocioId) return toast('Poné un código de negocio');
     saveLocal('config');
     conectarCloud().then(ok => { if(ok) cerrarSheet(); });
