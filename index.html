@@ -128,7 +128,7 @@ tailwind.config = {
 </div>
 
 <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-44 z-[60] hidden">
-  <div id="toastMsg" class="pop bg-white text-ink-900 text-sm font-bold px-4 py-2.5 rounded-full shadow-lg"></div>
+  <div id="toastMsg" class="pop bg-white text-ink-900 text-sm font-bold text-center px-4 py-2.5 rounded-2xl shadow-lg max-w-[85vw]"></div>
 </div>
 
 <script>
@@ -198,10 +198,23 @@ function jornadaLabel(j){
 const hora = ts => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
 
 function toast(msg){
+  DESHACER = null;
   $('#toastMsg').textContent = msg;
   $('#toast').classList.remove('hidden');
   clearTimeout(toast._t);
   toast._t = setTimeout(() => $('#toast').classList.add('hidden'), 1900);
+}
+
+/* Borrar es irreversible y, con la sincronización activa, borra para todos a la vez.
+   Por eso cada borrado deja unos segundos para arrepentirse. */
+let DESHACER = null;
+function toastDeshacer(msg, alDeshacer){
+  DESHACER = alDeshacer;
+  $('#toastMsg').innerHTML = esc(msg) +
+    ' <button id="btnDeshacer" class="ml-2 font-black text-dr-600 underline underline-offset-2">Deshacer</button>';
+  $('#toast').classList.remove('hidden');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { $('#toast').classList.add('hidden'); DESHACER = null; }, 7000);
 }
 
 /* ---------- persistencia local ---------- */
@@ -650,7 +663,8 @@ function formPedidoHTML(esEdicion){
         '<span id="pedTotal" class="text-3xl font-black tabular text-dr-400 leading-none">$0</span>' +
       '</div>' +
       '<div class="flex gap-2">' +
-        (esEdicion ? '<button id="btnBorrarPedido" class="px-4 py-3 rounded-xl border border-bad/40 text-bad font-bold text-sm active:bg-bad/10">Borrar</button>' +
+        (esEdicion ? '<button id="btnBorrarPedido" class="flex items-center gap-1.5 px-4 py-3 rounded-xl border border-bad/40 text-bad font-bold text-sm active:bg-bad/10 hover:bg-bad/10">' +
+                       '<svg viewBox="0 0 24 24" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>Borrar</button>' +
                      '<button id="btnCompartirPedido" class="px-4 py-3 rounded-xl border border-ink-600 font-bold text-sm active:bg-ink-700">💬</button>' : '') +
         '<button id="btnGuardarPedido" class="flex-1 py-3 rounded-xl bg-dr-500 text-ink-900 font-extrabold active:scale-95 transition">' + (esEdicion ? 'Guardar cambios' : 'Guardar pedido') + '</button>' +
       '</div>' +
@@ -1050,9 +1064,23 @@ document.addEventListener('click', ev => {
   if(cl('#btnCompartirPedido')){ compartir(textoPedido(UI.borrador)); return; }
 
   if(cl('#btnBorrarPedido')){
-    if(confirm('¿Borrar este pedido? No se puede deshacer.')){
-      delDoc('pedidos', UI.borrador.id); cerrarSheet(); toast('Pedido borrado');
+    const p = UI.borrador;
+    if(confirm('¿Borrar el pedido #' + p.num + ' de ' + (p.cliente || 'sin nombre') + '?')){
+      delDoc('pedidos', p.id);
+      cerrarSheet();
+      toastDeshacer('Pedido #' + p.num + ' borrado', () => {
+        putDoc('pedidos', p);
+        toast('Pedido #' + p.num + ' recuperado');
+      });
     }
+    return;
+  }
+
+  if(cl('#btnDeshacer')){
+    const fn = DESHACER;
+    DESHACER = null;
+    $('#toast').classList.add('hidden');
+    if(fn) fn();
     return;
   }
 
@@ -1079,7 +1107,13 @@ document.addEventListener('click', ev => {
     return;
   }
   const delCosto = cl('[data-delcosto]');
-  if(delCosto){ delDoc('costos', delCosto.dataset.delcosto); return; }
+  if(delCosto){
+    const c = DATA.costos.find(x => x.id === delCosto.dataset.delcosto);
+    if(!c) return;
+    delDoc('costos', c.id);
+    toastDeshacer(c.concepto + ' borrado', () => { putDoc('costos', c); toast('Costo recuperado'); });
+    return;
+  }
 
   if(cl('#btnCompartirCierre')){
     const j = UI.jornadaCaja || jornadaHoy();
