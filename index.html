@@ -294,7 +294,8 @@ function render(){
     b.classList.toggle('text-dr-500', on);
     b.classList.toggle('text-zinc-400', !on);
   });
-  $('#fab').classList.toggle('hidden', UI.tab === 'caja' || UI.tab === 'menu');
+  /* El repartidor no carga pedidos, y ahí el botón flotante tapaba el de Entregado. */
+  $('#fab').classList.toggle('hidden', UI.tab !== 'pedidos');
   if(UI.tab === 'pedidos') renderPedidos();
   if(UI.tab === 'reparto') renderReparto();
   if(UI.tab === 'caja')    renderCaja();
@@ -427,7 +428,6 @@ function renderReparto(){
 }
 
 function cardReparto(p){
-  const maps = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((p.dir || '') + ', Libertad, Uruguay');
   const tel = (p.tel || '').replace(/\D/g, '');
   const wa = tel ? 'https://wa.me/' + (tel.length <= 9 ? '598' + tel.replace(/^0/, '') : tel) + '?text=' + encodeURIComponent('Hola ' + (p.cliente || '') + '! Soy de Dr Chicken, ya salgo con tu pedido 🍗') : null;
   const cobra = p.pago === 'efectivo' ? money(totalPedido(p)) : (p.pago === 'transferencia' ? 'Ya transfirió' : 'Falta definir pago');
@@ -437,7 +437,7 @@ function cardReparto(p){
       '<span class="shrink-0 w-8 h-8 rounded-lg bg-ink-700 grid place-items-center text-sm font-extrabold tabular">' + (p.num || '?') + '</span>' +
       '<div class="min-w-0 flex-1">' +
         '<p class="font-bold leading-tight truncate">' + esc(p.cliente || 'Sin nombre') + '</p>' +
-        '<p class="text-sm text-dr-400 leading-snug">' + esc(p.dir || 'Sin dirección') + '</p>' +
+        '<p class="text-base font-semibold text-dr-400 leading-snug">' + esc(p.dir || 'Sin dirección') + '</p>' +
         '<p class="text-xs text-zinc-400 mt-1 leading-snug">' + esc(detalleItems(p)) + '</p>' +
         (p.notas ? '<p class="text-xs text-zinc-300 mt-1 leading-snug">📝 ' + esc(p.notas) + '</p>' : '') +
       '</div>' +
@@ -445,10 +445,9 @@ function cardReparto(p){
     '<div class="mt-2.5 flex items-center gap-2 text-xs">' +
       '<span class="px-2 py-1 rounded-lg bg-ink-700 font-bold">' + (p.pago === 'efectivo' ? '💵 Cobrar ' : '') + esc(cobra) + '</span>' +
     '</div>' +
-    '<div class="grid grid-cols-3 gap-2 mt-2.5">' +
-      '<a href="' + maps + '" target="_blank" rel="noopener" class="py-2 rounded-lg bg-ink-700 border border-ink-600 text-center text-xs font-bold active:bg-ink-600">📍 Mapa</a>' +
-      (wa ? '<a href="' + wa + '" target="_blank" rel="noopener" class="py-2 rounded-lg bg-ink-700 border border-ink-600 text-center text-xs font-bold active:bg-ink-600">💬 Avisar</a>'
-          : '<span class="py-2 rounded-lg bg-ink-700/40 border border-ink-600 text-center text-xs font-bold text-zinc-600">Sin tel.</span>') +
+    '<div class="grid grid-cols-2 gap-2 mt-2.5">' +
+      (wa ? '<a href="' + wa + '" target="_blank" rel="noopener" class="py-2 rounded-lg bg-ink-700 border border-ink-600 text-center text-xs font-bold active:bg-ink-600 hover:bg-ink-600">💬 Avisar</a>'
+          : '<span class="py-2 rounded-lg bg-ink-700/40 border border-ink-600 text-center text-xs font-bold text-zinc-600">Sin teléfono</span>') +
       (p.estado === 'camino'
         ? '<button data-entregar="' + p.id + '" class="py-2 rounded-lg bg-ok text-ink-900 text-xs font-extrabold active:scale-95 transition">✓ Entregado</button>'
         : '<button data-avanzar="' + p.id + '" class="py-2 rounded-lg bg-dr-500 text-ink-900 text-xs font-extrabold active:scale-95 transition">A reparto</button>') +

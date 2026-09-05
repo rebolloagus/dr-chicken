@@ -15,9 +15,9 @@ cliente, teléfono, dirección, los box tocando el precio, las salsas incluidas 
 cada box, notas y cómo paga. Cada pedido avanza con un botón:
 `Nuevo → A cocina → A reparto → Entregar`.
 
-**Reparto** — lo que hay que salir a llevar. Cada tarjeta trae la dirección con
-botón a Google Maps, botón para avisarle al cliente por WhatsApp, el detalle con
-las salsas (para controlar la bolsa antes de salir) y cuánta plata hay que cobrar.
+**Reparto** — lo que hay que salir a llevar. Cada tarjeta trae la dirección bien
+grande, botón para avisarle al cliente por WhatsApp, el detalle con las salsas (para
+controlar la bolsa antes de salir) y cuánta plata hay que cobrar.
 
 **Caja** — la ganancia de la noche, cuánto entró en efectivo y cuánto por
 transferencia, los costos que cargues (pollo, papas, aceite, nafta, envases) y el
