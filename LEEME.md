@@ -12,17 +12,24 @@ el celular queda como una app con las pestañas abajo.
 
 **Pedidos** — la noche en curso. Botón amarillo *Pedido* para cargar uno nuevo:
 cliente, teléfono, dirección, los box tocando el precio, las salsas incluidas de
-cada box, notas y cómo paga. Cada pedido avanza con un botón:
-`Nuevo → A cocina → A reparto → Entregar`.
+cada box, notas y cómo paga. Después cada pedido tiene dos botones:
 
-**Reparto** — lo que hay que salir a llevar. Cada tarjeta trae la dirección bien
-grande, botón para avisarle al cliente por WhatsApp, el detalle con las salsas (para
-controlar la bolsa antes de salir) y cuánta plata hay que cobrar.
+- **💬** le manda al cliente el aviso de que sale, por WhatsApp. En la laptop abre
+  WhatsApp Web derecho en el chat, siempre en la misma pestaña. El texto se edita
+  en Ajustes y admite `{cliente}`, `{total}` y `{pedido}`.
+- **Entregado** lo cierra.
 
-**Caja** — la ganancia de la noche, cuánto entró en efectivo y cuánto por
-transferencia, los costos que cargues (pollo, papas, aceite, nafta, envases) y el
-resumen de las últimas noches. El botón de abajo arma el cierre para mandarlo por
-WhatsApp.
+**Caja** — tiene dos vistas:
+
+- *Por noche*: la ganancia, cuánto entró en efectivo y cuánto por transferencia, los
+  costos que cargues (pollo, papas, aceite, nafta, envases), qué box se vendieron, y
+  el botón **Terminar la jornada**, que avisa si quedan pedidos sin entregar o sin
+  forma de pago antes de cerrar. Una noche cerrada se puede reabrir cuando quieras.
+- *Por mes*: todas las noches del mes sumadas, noche por noche, con el ranking de qué
+  box se vendió más — en unidades y en plata. Es la caja mensual.
+
+Cerrar una jornada no congela ni borra nada: los números se siguen calculando de los
+pedidos reales, y si cambian después del cierre la pantalla lo avisa.
 
 **Menú** — los precios. Tocá cualquier producto para cambiarle el precio, la
 descripción o esconderlo. Los cambios de precio no tocan los pedidos ya cargados.
