@@ -168,7 +168,7 @@ const ESTADOS = {
 let DATA  = { pedidos:[], productos:[], costos:[] };
 let CFG   = { envio:0, negocioId:'', fb:null };
 let UI    = { tab:'pedidos', filtro:'activos', jornadaCaja:null, borrador:null };
-let CLOUD = { on:false, db:null, fns:null, unsubs:[] };
+let CLOUD = { on:false, db:null, fns:null, unsubs:[], error:null };
 
 /* ---------- helpers ---------- */
 const $  = s => document.querySelector(s);
@@ -850,7 +850,18 @@ function abrirAjustes(){
           '<label class="lbl mb-0">Sincronizar entre celulares</label>' +
           '<span class="text-[11px] font-bold ' + (conectado ? 'text-ok' : 'text-zinc-500') + '">' + (conectado ? 'Conectado' : 'Sin conectar') + '</span>' +
         '</div>' +
-        '<p class="text-[11px] text-zinc-400 mb-2.5 leading-snug">Pegá acá la configuración de Firebase y usá el mismo código de negocio en los dos celulares. Sin esto la app funciona igual, pero cada uno ve sus propios pedidos.</p>' +
+        '<p class="text-[11px] text-zinc-400 mb-2.5 leading-snug">Pegá acá la configuración de Firebase y usá el mismo código de negocio en todos los dispositivos. Sin esto la app funciona igual, pero cada uno ve sus propios pedidos.</p>' +
+
+        (CLOUD.error
+          ? '<div class="mb-3 rounded-xl border border-bad/40 bg-bad/10 p-3">' +
+              '<p class="text-xs font-bold text-bad mb-1">Qué está fallando</p>' +
+              '<p class="text-[11px] text-zinc-200 leading-snug">' + esc(CLOUD.error.msg) + '</p>' +
+              '<p class="text-[10px] text-zinc-500 mt-1.5 font-mono">' + esc(CLOUD.error.donde) + ' · ' + esc(CLOUD.error.code) + '</p>' +
+              (CFG.negocioId
+                ? "<p class=\"text-[10px] text-zinc-400 mt-2 leading-snug\">En las reglas de Firestore tiene que decir exactamente:<br><span class=\"font-mono text-dr-400 break-all\">negocio == '" + esc(CFG.negocioId) + "'</span></p>"
+                : '') +
+            '</div>'
+          : '') +
         '<label class="lbl">Código del negocio</label>' +
         '<input id="cfNegocio" class="fld mb-2.5" placeholder="drchicken-libertad" value="' + esc(CFG.negocioId || '') + '">' +
         '<label class="lbl">Configuración de Firebase</label>' +
@@ -930,7 +941,31 @@ function importarDatos(file){
 
 const FB_VER = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
+/* Un cartel que solo dice "Error" no ayuda a nadie: se guarda el motivo real que
+   devuelve Firestore y se traduce a algo accionable, que se lee en Ajustes. */
+const MOTIVOS_FB = {
+  'permission-denied': 'Firestore está rechazando la conexión. Casi siempre es que el código del negocio no coincide con el de las reglas, o que las reglas no se publicaron.',
+  'unauthenticated':   'Firestore pide autenticación: revisá que las reglas sean las que corresponden a este código de negocio.',
+  'not-found':         'No existe la base de datos. Creala en Firestore Database (ID (default)).',
+  'failed-precondition':'Falta crear la base de datos en Firestore Database.',
+  'unavailable':       'No hay conexión con Firestore. Puede ser internet o el servicio caído: reintenta solo.',
+  'invalid-argument':  'Algún dato de la configuración de Firebase está mal.',
+  'resource-exhausted':'Se pasaron de la cuota gratis del día. Se restablece sola.'
+};
+
+function anotarErrorCloud(e, donde){
+  const code = (e && e.code) ? String(e.code).replace('firestore/', '') : '';
+  CLOUD.error = {
+    code: code || (e && e.message ? e.message.slice(0, 120) : 'desconocido'),
+    msg: MOTIVOS_FB[code] || (e && e.message ? e.message : 'Error desconocido.'),
+    donde: donde
+  };
+  console.warn('[sync]', donde, e);
+  pintarSync('err', 'Error');
+}
+
 function pintarSync(estado, txt){
+  if(estado !== 'err') CLOUD.error = null;
   const colores = { off:'bg-zinc-500', on:'bg-ok', wait:'bg-warn animate-pulse', err:'bg-bad' };
   $('#syncDot').className = 'w-2 h-2 rounded-full ' + (colores[estado] || colores.off);
   $('#syncTxt').textContent = txt;
@@ -955,7 +990,7 @@ async function conectarCloud(silencioso){
         DATA[col] = snap.docs.map(d => d.data());
         saveLocal(col);
         render();
-      }, err => { console.warn(err); pintarSync('err', 'Error'); });
+      }, err => anotarErrorCloud(err, 'leyendo ' + col));
       CLOUD.unsubs.push(unsub);
     });
 
@@ -963,10 +998,9 @@ async function conectarCloud(silencioso){
     if(!silencioso) toast('Sincronización activada');
     return true;
   } catch(e){
-    console.warn(e);
     CLOUD.on = false;
-    pintarSync('err', 'Error');
-    if(!silencioso) toast('No se pudo conectar. Revisá la configuración.');
+    anotarErrorCloud(e, 'conectando');
+    if(!silencioso) toast('No se pudo conectar. Mirá el detalle en Ajustes.');
     return false;
   }
 }
@@ -984,13 +1018,14 @@ function cloudPut(col, obj){
   if(!CLOUD.on) return;
   const fs = CLOUD.fns;
   fs.setDoc(fs.doc(CLOUD.db, 'negocios', CFG.negocioId, col, obj.id), JSON.parse(JSON.stringify(obj)))
-    .catch(e => { console.warn(e); pintarSync('err', 'Error'); });
+    .catch(e => anotarErrorCloud(e, 'guardando en ' + col));
 }
 
 function cloudDel(col, id){
   if(!CLOUD.on) return;
   const fs = CLOUD.fns;
-  fs.deleteDoc(fs.doc(CLOUD.db, 'negocios', CFG.negocioId, col, id)).catch(e => console.warn(e));
+  fs.deleteDoc(fs.doc(CLOUD.db, 'negocios', CFG.negocioId, col, id))
+    .catch(e => anotarErrorCloud(e, 'borrando en ' + col));
 }
 
 /* ========================== EVENTOS ========================== */
