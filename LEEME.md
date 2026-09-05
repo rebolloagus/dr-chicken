@@ -1,7 +1,12 @@
 # Dr Chicken · App de pedidos
 
+### 👉 https://rebolloagus.github.io/dr-chicken/
+
 App web para administrar los pedidos del delivery (viernes a domingo, 20:30 a 23:30).
 Todo vive en un solo archivo: `index.html`.
+
+Se adapta sola: en la laptop muestra los pedidos en columnas con el menú arriba, y en
+el celular queda como una app con las pestañas abajo.
 
 ## Cómo se usa
 
