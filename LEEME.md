@@ -39,8 +39,9 @@ descripción o esconderlo. Los cambios de precio no tocan los pedidos ya cargado
 
 ## Sincronizar los dos celulares
 
-Sin configurar nada la app funciona perfecto, pero cada celular guarda sus propios
-pedidos. Para que los dos vean lo mismo al instante:
+Sin configurar nada la app funciona perfecto, pero **cada dispositivo guarda sus
+propios pedidos**: si cargás en un celular y abrís en otro, no vas a ver nada. Para
+que todos vean lo mismo al instante, una sola vez:
 
 1. Entrar a **console.firebase.google.com** con la cuenta de Google del negocio y
    crear un proyecto (el plan gratis alcanza de sobra; se puede saltear Analytics).
@@ -50,8 +51,13 @@ pedidos. Para que los dos vean lo mismo al instante:
    registrar una app web (sin marcar Hosting). Firebase muestra un bloque de código:
    copiarlo entero, tal cual, no hace falta acomodar nada.
 4. En la app: engranaje arriba a la derecha → pegar eso en *Configuración de
-   Firebase*, poner el mismo **código del negocio** en todos los dispositivos y tocar
-   *Conectar*. El puntito del header se pone verde y dice "En línea".
+   Firebase*, poner el **código del negocio** y tocar *Conectar*. El puntito del
+   header se pone verde y dice "En línea".
+
+   **Para sumar el resto de los dispositivos no hace falta repetir esto:** en un
+   equipo ya conectado, Ajustes → *📲 Conectar otro dispositivo* genera un link.
+   Quien lo abre queda conectado a los mismos pedidos. Ese link lleva la llave del
+   negocio, así que va solo al equipo del local.
 
    El código del negocio es la llave de la base: inventá uno largo y difícil de
    adivinar, y **no lo publiques en ningún lado**. Acá va como `TU-CODIGO-SECRETO`

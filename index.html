@@ -1026,6 +1026,9 @@ function abrirAjustes(){
           '<button id="cfConectar" class="flex-1 py-2.5 rounded-xl bg-dr-500 text-ink-900 font-extrabold text-sm active:scale-95 transition">' + (conectado ? 'Reconectar' : 'Conectar') + '</button>' +
           (conectado ? '<button id="cfDesconectar" class="px-4 py-2.5 rounded-xl border border-ink-600 font-bold text-sm active:bg-ink-700">Desconectar</button>' : '') +
         '</div>' +
+        (conectado
+          ? '<button id="cfCompartir" class="w-full mt-2 py-2.5 rounded-xl border border-dr-500/50 text-dr-400 font-bold text-sm active:bg-dr-500/10 hover:bg-dr-500/10">📲 Conectar otro dispositivo</button>'
+          : '') +
       '</div>' +
 
       '<div class="border-t border-ink-700 pt-4">' +
@@ -1141,6 +1144,30 @@ async function conectarCloud(silencioso){
     CLOUD.fns = fs;
     CLOUD.on = true;
 
+    /* Al conectar un dispositivo que ya venia cargando solo, sus pedidos no estan
+       en la nube y la suscripcion los pisaria. Se revisa antes y se pregunta. */
+    if(!silencioso){
+      const soloLocales = async col => {
+        const snap = await fs.getDocs(fs.collection(CLOUD.db, 'negocios', CFG.negocioId, col));
+        if(snap.empty) return { vacia: true, solos: [] };
+        const enNube = {};
+        snap.docs.forEach(d => enNube[d.id] = true);
+        return { vacia: false, solos: DATA[col].filter(x => !enNube[x.id]) };
+      };
+      const ped = await soloLocales('pedidos');
+      const cos = await soloLocales('costos');
+      if(!ped.vacia && ped.solos.length){
+        const n = ped.solos.length;
+        if(confirm('Este dispositivo tiene ' + n + (n === 1 ? ' pedido guardado' : ' pedidos guardados') +
+                   ' que no están en la cuenta compartida.\n\n' +
+                   'Aceptar: se suben y los ven todos.\n' +
+                   'Cancelar: se descartan y queda lo que ya hay en la cuenta.')){
+          ped.solos.forEach(p => cloudPut('pedidos', p));
+          cos.solos.forEach(c => cloudPut('costos', c));
+        }
+      }
+    }
+
     ['pedidos','productos','costos','cierres'].forEach(col => {
       const ref = fs.collection(CLOUD.db, 'negocios', CFG.negocioId, col);
       const unsub = fs.onSnapshot(ref, snap => {
@@ -1161,6 +1188,33 @@ async function conectarCloud(silencioso){
     if(!silencioso) toast('No se pudo conectar. Mirá el detalle en Ajustes.');
     return false;
   }
+}
+
+/* Configurar 5 dispositivos a mano es tedioso y se presta a errores de tipeo, asi
+   que la configuracion viaja en un link. Quien lo abre queda conectado a la misma
+   cuenta. El link lleva la llave del negocio: se manda solo al equipo. */
+function linkDeConfig(){
+  const datos = btoa(unescape(encodeURIComponent(JSON.stringify({ fb:CFG.fb, n:CFG.negocioId }))));
+  return location.origin + location.pathname + '#s=' + datos;
+}
+
+function aplicarConfigDeLink(){
+  const h = location.hash || '';
+  if(h.indexOf('#s=') !== 0) return false;
+  /* Que no quede a la vista ni se vuelva a aplicar al recargar. replaceState falla
+     en algunos contextos (archivo local), así que hay un plan B. */
+  try { history.replaceState(null, '', location.pathname + location.search); }
+  catch(e){ location.hash = ''; }
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(h.slice(3)))));
+    if(!d || !d.fb || !d.n) return false;
+    if(CFG.negocioId === d.n && CFG.fb) return false;  /* ya estaba conectado a lo mismo */
+    if(!confirm('¿Conectar este dispositivo a Dr Chicken?\n\nVas a ver los mismos pedidos que el resto del equipo.')) return false;
+    CFG.fb = d.fb;
+    CFG.negocioId = d.n;
+    saveLocal('config');
+    return true;
+  } catch(e){ return false; }
 }
 
 function desconectarCloud(interno){
@@ -1352,6 +1406,28 @@ document.addEventListener('click', ev => {
     return;
   }
   if(cl('#cfDesconectar')){ desconectarCloud(); cerrarSheet(); toast('Sincronización desactivada'); return; }
+
+  if(cl('#cfCompartir')){
+    const url = linkDeConfig();
+    abrirSheet('Conectar otro dispositivo',
+      '<div class="space-y-4">' +
+        '<p class="text-sm text-zinc-300 leading-snug">Mandale este link al celular o la compu que quieras sumar. Al abrirlo queda conectado a los mismos pedidos, sin configurar nada.</p>' +
+        '<div class="rounded-xl border border-ink-600 bg-ink-700 p-3 break-all font-mono text-[11px] text-zinc-300">' + esc(url) + '</div>' +
+        '<div class="grid grid-cols-2 gap-2">' +
+          '<button id="cpCopiar" class="py-3 rounded-xl bg-dr-500 text-ink-900 font-extrabold text-sm active:scale-95 transition">Copiar link</button>' +
+          '<a href="https://wa.me/?text=' + encodeURIComponent('Link para conectar la app de Dr Chicken:\n' + url) + '" target="whatsapp" rel="noopener" class="py-3 rounded-xl border border-ink-600 font-bold text-sm text-center active:bg-ink-700 hover:bg-ink-700">Enviar por WhatsApp</a>' +
+        '</div>' +
+        '<p class="text-[11px] text-zinc-500 leading-snug">Este link es la llave de la caja: mandalo solo a los del local y no lo publiques en ningún lado. Si alguna vez se filtra, avisame y cambiamos el código del negocio.</p>' +
+      '</div>');
+    return;
+  }
+
+  if(cl('#cpCopiar')){
+    const url = linkDeConfig();
+    if(navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Link copiado'), () => toast('No se pudo copiar'));
+    else toast('Copialo a mano del recuadro');
+    return;
+  }
   if(cl('#cfExportar')){ guardarAjustes(); exportarDatos(); return; }
   if(cl('#cfImportar')){ $('#cfFile').click(); return; }
   if(cl('#cfResetMenu')){
@@ -1403,10 +1479,17 @@ document.addEventListener('input', ev => {
   link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/json' }));
   document.head.appendChild(link);
 
+  /* Si la app ya estaba abierta, tocar el link solo cambia el hash y no recarga:
+     sin esto, el dispositivo se quedaria sin configurar. */
+  window.addEventListener('hashchange', () => {
+    if(aplicarConfigDeLink()){ render(); conectarCloud(); }
+  });
+
   loadLocal();
+  const vinoDeLink = aplicarConfigDeLink();
   UI.jornadaCaja = jornadaHoy();
   render();
-  if(CFG.fb && CFG.negocioId) conectarCloud(true); else pintarSync('off', 'Local');
+  if(CFG.fb && CFG.negocioId) conectarCloud(!vinoDeLink); else pintarSync('off', 'Local');
 })();
 </script>
 </body>
