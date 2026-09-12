@@ -1020,8 +1020,8 @@ function abrirAjustes(){
           : '') +
         '<label class="lbl">Código del negocio</label>' +
         '<input id="cfNegocio" class="fld mb-2.5" placeholder="drchicken-libertad" value="' + esc(CFG.negocioId || '') + '">' +
-        '<label class="lbl">Configuración de Firebase</label>' +
-        '<textarea id="cfFb" class="fld font-mono text-[11px]" rows="6" placeholder="Pegá el bloque tal cual lo copiaste de Firebase">' + esc(CFG.fb ? JSON.stringify(CFG.fb) : '') + '</textarea>' +
+        '<label class="lbl">Configuración de Firebase <span class="normal-case tracking-normal text-zinc-500">(o pegá acá el link de invitación)</span></label>' +
+        '<textarea id="cfFb" class="fld font-mono text-[11px]" rows="6" placeholder="Pegá el link que te pasaron, o el bloque de Firebase">' + esc(CFG.fb ? JSON.stringify(CFG.fb) : '') + '</textarea>' +
         '<div class="flex gap-2 mt-2.5">' +
           '<button id="cfConectar" class="flex-1 py-2.5 rounded-xl bg-dr-500 text-ink-900 font-extrabold text-sm active:scale-95 transition">' + (conectado ? 'Reconectar' : 'Conectar') + '</button>' +
           (conectado ? '<button id="cfDesconectar" class="px-4 py-2.5 rounded-xl border border-ink-600 font-bold text-sm active:bg-ink-700">Desconectar</button>' : '') +
@@ -1217,6 +1217,36 @@ function aplicarConfigDeLink(){
   } catch(e){ return false; }
 }
 
+/* En iPhone, la app agregada a la pantalla de inicio guarda sus datos aparte de
+   Safari: abre vacia y sin configurar. Llevando la config en el start_url, el
+   acceso directo se configura solo la primera vez que se abre. */
+let LINK_MANIFIESTO = null;
+function actualizarManifiesto(){
+  const base = location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '');
+  const arranque = (CFG.fb && CFG.negocioId) ? linkDeConfig() : base;
+  const manifest = {
+    name:'Dr Chicken · Pedidos', short_name:'Dr Chicken', start_url:arranque, display:'standalone',
+    background_color:'#111113', theme_color:'#111113',
+    icons:[{ src:base + 'icono.png', sizes:'256x256', type:'image/png', purpose:'any' }]
+  };
+  if(LINK_MANIFIESTO){ URL.revokeObjectURL(LINK_MANIFIESTO.href); LINK_MANIFIESTO.remove(); }
+  LINK_MANIFIESTO = document.createElement('link');
+  LINK_MANIFIESTO.rel = 'manifest';
+  LINK_MANIFIESTO.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/json' }));
+  document.head.appendChild(LINK_MANIFIESTO);
+}
+
+/* Permite pegar el link de invitacion directamente en Ajustes, que es la salida
+   cuando el acceso directo ya se creo sin configuracion. */
+function parseLinkConfig(txt){
+  const m = String(txt || '').match(/#s=([A-Za-z0-9+/=]+)/);
+  if(!m) return null;
+  try {
+    const d = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+    return (d && d.fb && d.n) ? d : null;
+  } catch(e){ return null; }
+}
+
 function desconectarCloud(interno){
   CLOUD.unsubs.forEach(u => { try { u(); } catch(e){} });
   CLOUD.unsubs = [];
@@ -1396,12 +1426,20 @@ document.addEventListener('click', ev => {
   /* ajustes */
   if(cl('#cfConectar')){
     guardarAjustes();
-    CFG.negocioId = $('#cfNegocio').value.trim();
-    const fb = parseConfigFirebase($('#cfFb').value);
-    if(!fb) return toast('No encontré la config de Firebase en ese texto');
-    CFG.fb = fb;
-    if(!CFG.negocioId) return toast('Poné un código de negocio');
+    /* Puede pegarse el link de invitacion, que ya trae codigo y configuracion. */
+    const desdeLink = parseLinkConfig($('#cfFb').value);
+    if(desdeLink){
+      CFG.fb = desdeLink.fb;
+      CFG.negocioId = desdeLink.n;
+    } else {
+      CFG.negocioId = $('#cfNegocio').value.trim();
+      const fb = parseConfigFirebase($('#cfFb').value);
+      if(!fb) return toast('No encontré la config de Firebase en ese texto');
+      CFG.fb = fb;
+      if(!CFG.negocioId) return toast('Poné un código de negocio');
+    }
     saveLocal('config');
+    actualizarManifiesto();
     conectarCloud().then(ok => { if(ok) cerrarSheet(); });
     return;
   }
@@ -1468,26 +1506,16 @@ document.addEventListener('input', ev => {
 /* ============================ INIT ============================ */
 
 (function init(){
-  const base = location.href.replace(/[^/]*$/, '');
-  const manifest = {
-    name:'Dr Chicken · Pedidos', short_name:'Dr Chicken', start_url:base, display:'standalone',
-    background_color:'#111113', theme_color:'#111113',
-    icons:[{ src:base + 'icono.png', sizes:'256x256', type:'image/png', purpose:'any' }]
-  };
-  const link = document.createElement('link');
-  link.rel = 'manifest';
-  link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/json' }));
-  document.head.appendChild(link);
+  loadLocal();
 
   /* Si la app ya estaba abierta, tocar el link solo cambia el hash y no recarga:
      sin esto, el dispositivo se quedaria sin configurar. */
   window.addEventListener('hashchange', () => {
-    if(aplicarConfigDeLink()){ render(); conectarCloud(); }
+    if(aplicarConfigDeLink()){ render(); actualizarManifiesto(); conectarCloud(); }
   });
-
-  loadLocal();
   const vinoDeLink = aplicarConfigDeLink();
   UI.jornadaCaja = jornadaHoy();
+  actualizarManifiesto();
   render();
   if(CFG.fb && CFG.negocioId) conectarCloud(!vinoDeLink); else pintarSync('off', 'Local');
 })();

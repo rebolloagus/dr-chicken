@@ -82,10 +82,18 @@ se escribe a mano en cada dispositivo.
 
 ## Instalarla en el celular
 
+**Primero conectar la sincronización, después agregar a la pantalla de inicio.** En
+el iPhone el acceso directo guarda sus datos aparte de Safari, así que si lo creás
+antes de conectar, se abre vacío y dice "Local".
+
 - **iPhone:** abrir el link **en Safari** → botón Compartir → *Añadir a pantalla de inicio*.
 - **Android:** abrirlo en Chrome → los tres puntos → *Agregar a pantalla de inicio*.
 
 Queda con ícono propio y se abre en pantalla completa, como una app cualquiera.
+
+Si quedó diciendo "Local", hay dos salidas: borrar el acceso directo y volver a
+agregarlo desde una sesión ya conectada, o abrir Ajustes dentro del acceso directo y
+pegar el link de invitación en el cuadro de configuración.
 
 > No la uses desde el mini-navegador que abre WhatsApp adentro del chat: ese borra
 > los datos guardados al cerrarse. Copiar el link y pegarlo en Safari o Chrome.
