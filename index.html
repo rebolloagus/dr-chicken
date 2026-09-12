@@ -189,7 +189,7 @@ function linkWhatsApp(tel, texto){
 let DATA  = { pedidos:[], productos:[], costos:[], cierres:[] };
 let CFG   = { envio:0, negocioId:'', fb:null, msgSalida:'' };
 let UI    = { tab:'pedidos', filtro:'pendientes', jornadaCaja:null, mesCaja:null, cajaVista:'noche', borrador:null };
-let CLOUD = { on:false, db:null, fns:null, unsubs:[], error:null };
+let CLOUD = { on:false, db:null, fns:null, unsubs:[], error:null, arrancada:{} };
 
 /* ---------- helpers ---------- */
 const $  = s => document.querySelector(s);
@@ -1168,18 +1168,17 @@ async function conectarCloud(silencioso){
       }
     }
 
+    CLOUD.arrancada = {};
     ['pedidos','productos','costos','cierres'].forEach(col => {
       const ref = fs.collection(CLOUD.db, 'negocios', CFG.negocioId, col);
-      const unsub = fs.onSnapshot(ref, snap => {
-        if(snap.empty && DATA[col].length){ DATA[col].forEach(o => cloudPut(col, o)); return; }
-        DATA[col] = snap.docs.map(d => d.data());
-        saveLocal(col);
-        render();
-      }, err => anotarErrorCloud(err, 'leyendo ' + col));
+      const unsub = fs.onSnapshot(ref, snap => aplicarSnapshot(col, snap.docs.map(d => d.data())),
+                                  err => anotarErrorCloud(err, 'leyendo ' + col));
       CLOUD.unsubs.push(unsub);
     });
 
     pintarSync('on', 'En línea');
+    CFG.sincronizadoCon = CFG.negocioId;   /* de acá en adelante, la nube manda */
+    saveLocal('config');
     if(!silencioso) toast('Sincronización activada');
     return true;
   } catch(e){
@@ -1250,10 +1249,33 @@ function parseLinkConfig(txt){
 function desconectarCloud(interno){
   CLOUD.unsubs.forEach(u => { try { u(); } catch(e){} });
   CLOUD.unsubs = [];
+  CLOUD.arrancada = {};
   if(!interno){
     CLOUD.on = false; CLOUD.db = null; CLOUD.fns = null;
     pintarSync('off', 'Local');
   }
+}
+
+/* Que llega de la nube y que se hace con eso.
+
+   La subida de lo local solo tiene sentido la primera vez que este dispositivo se
+   sincroniza con este negocio y encuentra la coleccion vacia. Si se hiciera en cada
+   aviso, borrar el ultimo pedido lo resucitaria: los demas dispositivos verian la
+   coleccion vacia, creerian que hay que poblarla y volverian a subir lo que todavia
+   tienen en memoria. */
+function aplicarSnapshot(col, docs){
+  const primero = !CLOUD.arrancada[col];
+  CLOUD.arrancada[col] = true;
+
+  if(primero && !docs.length && DATA[col].length && CFG.sincronizadoCon !== CFG.negocioId){
+    DATA[col].forEach(o => cloudPut(col, o));
+    return 'subido';
+  }
+
+  DATA[col] = docs;
+  saveLocal(col);
+  render();
+  return 'aplicado';
 }
 
 function cloudPut(col, obj){
