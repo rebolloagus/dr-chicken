@@ -140,7 +140,7 @@ const MENU_INICIAL = [
   { cat:'BOX S', nombre:'CRISPY',        desc:'4 pechugas, con papas fritas y salsa a elección.',                       precio:390,  salsas:1 },
   { cat:'BOX S', nombre:'ALITAS',        desc:'4 alitas, con papas fritas y salsa a elección.',                         precio:390,  salsas:1 },
   { cat:'BOX S', nombre:'DR. LEGS',      desc:'5 patitas, con papas fritas y salsa a elección.',                        precio:390,  salsas:1 },
-  { cat:'BOX S', nombre:'DR. MIX',       desc:'2 alitas, 2 pechugas y 2 patitas, con papas fritas y salsa a elección.',  precio:410,  salsas:1 },
+  { cat:'BOX S', nombre:'DR. MIX',       desc:'2 alitas, 2 pechugas y 2 patitas, con papas fritas y salsa a elección.',  precio:430,  salsas:1 },
   { cat:'BOX M', nombre:'CHICKEN DUO',   desc:'5 pechugas y 4 alitas, con papas fritas y 2 salsas a elección.',         precio:690,  salsas:2 },
   { cat:'BOX M', nombre:'DOCTORE',       desc:'5 pechuga y 5 patitas, con papas fritas y 2 salsas a elección.',         precio:720,  salsas:2 },
   { cat:'BOX L', nombre:'EXTRA XL',      desc:'5 patitas, 5 pechugas y 4 alitas con papas fritas y 3 salsas a elección.', precio:1250, salsas:3 },
@@ -760,9 +760,10 @@ function formPedidoHTML(esEdicion){
       (cat === 'SALSAS' ? ' <span class="font-bold text-zinc-500 normal-case tracking-normal">· extra, aparte de las incluidas</span>' : '') + '</p>' +
     '<div class="grid grid-cols-2 lg:grid-cols-3 gap-2">' +
       productosOn().filter(p => p.cat === cat).map(p =>
-        '<button data-add="' + p.id + '" class="text-left bg-ink-700 border border-ink-600 rounded-xl p-2.5 active:bg-ink-600 active:scale-95 transition">' +
-          '<p class="text-xs font-extrabold leading-tight">' + esc(p.nombre) + '</p>' +
+        '<button data-add="' + p.id + '" class="btnProd relative text-left bg-ink-700 border border-ink-600 rounded-xl p-2.5 active:scale-95 transition">' +
+          '<p class="text-xs font-extrabold leading-tight pr-5">' + esc(p.nombre) + '</p>' +
           '<p class="text-[11px] font-bold text-dr-400 tabular mt-0.5">' + money(p.precio) + '</p>' +
+          '<span data-badge="' + p.id + '" class="hidden absolute top-1.5 right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-dr-500 text-ink-900 text-[11px] font-black grid place-items-center tabular"></span>' +
         '</button>').join('') +
     '</div>').join('');
 
@@ -839,6 +840,7 @@ function renderBorrador(){
   const salsas = salsasDisponibles();
   $('#pedItems').innerHTML = b.items.length ? b.items.map((it, idx) => {
     const req = (it.salsasReq || 0) * it.cant;
+    const tocado = it.precioBase != null && it.precio !== it.precioBase;
     const puestas = it.salsas || [];
     const cuenta = {};
     puestas.forEach(s => cuenta[s] = (cuenta[s] || 0) + 1);
@@ -846,7 +848,14 @@ function renderBorrador(){
       '<div class="flex items-center gap-2">' +
         '<div class="min-w-0 flex-1">' +
           '<p class="text-sm font-bold leading-tight truncate">' + esc(it.nombre) + '</p>' +
-          '<p class="text-[11px] text-zinc-400 tabular">' + money(it.precio) + ' c/u · ' + money(it.precio * it.cant) + '</p>' +
+          '<div class="flex items-center gap-1 mt-1 text-[11px] text-zinc-400">' +
+            '<span>$</span>' +
+            '<input data-precio="' + idx + '" value="' + it.precio + '" inputmode="numeric" ' +
+              'class="w-14 bg-ink-600 border rounded px-1.5 py-0.5 tabular text-zinc-100 text-[11px] ' +
+              (tocado ? 'border-dr-500 text-dr-400 font-bold' : 'border-ink-500') + '">' +
+            '<span>c/u · <span class="font-bold text-zinc-200 tabular">' + money(it.precio * it.cant) + '</span></span>' +
+            (tocado ? '<button data-resetprecio="' + idx + '" class="ml-1 text-[10px] text-dr-400 underline underline-offset-2">volver a ' + money(it.precioBase) + '</button>' : '') +
+          '</div>' +
         '</div>' +
         '<div class="flex items-center gap-1 shrink-0">' +
           '<button data-cant="' + idx + '|-1" class="w-8 h-8 rounded-lg bg-ink-600 font-bold active:bg-ink-500">−</button>' +
@@ -865,6 +874,17 @@ function renderBorrador(){
     '</div>';
   }).join('') : '<p class="text-xs text-zinc-500 py-2">Todavía no agregaste productos. Tocá un box de arriba.</p>';
 
+  /* Que se vea de un golpe que un box ya esta en el pedido y cuantos van. */
+  const enPedido = {};
+  b.items.forEach(i => enPedido[i.pid] = (enPedido[i.pid] || 0) + i.cant);
+  $$('.btnProd').forEach(btn => {
+    const n = enPedido[btn.dataset.add] || 0;
+    btn.className = 'btnProd relative text-left rounded-xl p-2.5 active:scale-95 transition border ' +
+      (n ? 'bg-dr-500/15 border-dr-500' : 'bg-ink-700 border-ink-600');
+    const badge = btn.querySelector('[data-badge]');
+    if(badge){ badge.textContent = n || ''; badge.classList.toggle('hidden', !n); }
+  });
+
   $('#pedTotal').textContent = money(totalPedido(b));
 }
 
@@ -873,7 +893,7 @@ function addItem(pid){
   if(!b || !p) return;
   const it = b.items.find(i => i.pid === pid);
   if(it) it.cant++;
-  else b.items.push({ pid:p.id, nombre:p.nombre, precio:p.precio, cat:p.cat, cant:1, salsasReq:p.salsas || 0, salsas:[] });
+  else b.items.push({ pid:p.id, nombre:p.nombre, precio:p.precio, precioBase:p.precio, cat:p.cat, cant:1, salsasReq:p.salsas || 0, salsas:[] });
   renderBorrador();
 }
 
@@ -1351,6 +1371,13 @@ document.addEventListener('click', ev => {
   const salsa = cl('[data-salsa]');
   if(salsa){ const p = salsa.dataset.salsa.split('|'); tocarSalsa(Number(p[0]), p[1]); return; }
 
+  const resetPr = cl('[data-resetprecio]');
+  if(resetPr){
+    const it = UI.borrador.items[Number(resetPr.dataset.resetprecio)];
+    if(it && it.precioBase != null){ it.precio = it.precioBase; renderBorrador(); }
+    return;
+  }
+
   const limpia = cl('[data-limpiasalsa]');
   if(limpia){ const it = UI.borrador.items[Number(limpia.dataset.limpiasalsa)]; if(it){ it.salsas = []; renderBorrador(); } return; }
 
@@ -1509,6 +1536,17 @@ document.addEventListener('click', ev => {
 });
 
 document.addEventListener('change', ev => {
+  const pr = ev.target.dataset && ev.target.dataset.precio;
+  if(pr !== undefined && pr !== null && pr !== ''){
+    const it = UI.borrador && UI.borrador.items[Number(pr)];
+    if(it){
+      const v = Math.max(0, Math.round(Number(ev.target.value) || 0));
+      if(it.precioBase == null) it.precioBase = it.precio;
+      it.precio = v;
+      renderBorrador();
+    }
+    return;
+  }
   if(ev.target.id === 'selJornada'){ UI.jornadaCaja = ev.target.value; renderCaja(); }
   if(ev.target.id === 'selMes'){ UI.mesCaja = ev.target.value; renderCaja(); }
   if(ev.target.id === 'cfFile' && ev.target.files[0]) importarDatos(ev.target.files[0]);
