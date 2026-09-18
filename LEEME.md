@@ -11,13 +11,15 @@ el celular queda como una app con las pestañas abajo.
 ## Cómo se usa
 
 **Pedidos** — la noche en curso. Botón amarillo *Pedido* para cargar uno nuevo:
-cliente, teléfono, dirección, los box tocando el precio, las salsas incluidas de
-cada box, notas y cómo paga. Después cada pedido tiene dos botones:
+cliente, dirección, los box tocando el precio, las salsas incluidas de cada box,
+notas y cómo paga. El box elegido queda resaltado con la cantidad en un círculo, y
+**el precio de cada línea se puede editar** (por ejemplo, pollo sin papas): queda
+marcado en ámbar y con un atajo para volver al precio de lista. Cambiarlo no toca el
+menú. Después, el botón **Entregado** cierra el pedido.
 
-- **💬** le manda al cliente el aviso de que sale, por WhatsApp. En la laptop abre
-  WhatsApp Web derecho en el chat, siempre en la misma pestaña. El texto se edita
-  en Ajustes y admite `{cliente}`, `{total}` y `{pedido}`.
-- **Entregado** lo cierra.
+Para una promo, cargala en **Menú → + Producto** con la categoría `PROMOS`: aparece
+primera en la lista. Cuando termina, en vez de borrarla destildá *Mostrar al cargar
+pedidos*, así los pedidos viejos conservan el nombre y el precio con que se vendieron.
 
 **Caja** — tiene dos vistas:
 

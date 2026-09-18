@@ -157,37 +157,9 @@ const ESTADOS = {
   cancelado: { txt:'Cancelado', color:'bg-bad/15 text-bad border-bad/30',          next:null,        accion:null }
 };
 
-/* WhatsApp: en el celular conviene wa.me, que abre la app. En la laptop ese link
-   abre una pagina intermedia que pregunta como seguir y pide permisos cada vez,
-   asi que se va derecho a WhatsApp Web. El target con nombre hace que reutilice
-   siempre la misma pestaña en lugar de acumular una por pedido. */
-const ES_MOVIL = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-const MSG_SALIDA = 'Hola {cliente}! Soy de Dr Chicken 🍗 Ya salió tu pedido, en unos minutos estamos ahí.';
-
-function telInternacional(tel){
-  const n = String(tel || '').replace(/\D/g, '');
-  if(!n) return '';
-  return n.indexOf('598') === 0 ? n : '598' + n.replace(/^0+/, '');
-}
-
-function mensajeCliente(p){
-  return (CFG.msgSalida || MSG_SALIDA)
-    .replace(/\{cliente\}/g, (p.cliente || '').split(' ')[0])
-    .replace(/\{total\}/g, money(totalPedido(p)))
-    .replace(/\{pedido\}/g, '#' + p.num);
-}
-
-function linkWhatsApp(tel, texto){
-  const n = telInternacional(tel);
-  if(!n) return null;
-  const t = encodeURIComponent(texto);
-  return ES_MOVIL ? 'https://wa.me/' + n + '?text=' + t
-                  : 'https://web.whatsapp.com/send?phone=' + n + '&text=' + t;
-}
-
 /* ---------- estado en memoria ---------- */
 let DATA  = { pedidos:[], productos:[], costos:[], cierres:[] };
-let CFG   = { envio:0, negocioId:'', fb:null, msgSalida:'' };
+let CFG   = { negocioId:'', fb:null };
 let UI    = { tab:'pedidos', filtro:'pendientes', jornadaCaja:null, mesCaja:null, cajaVista:'noche', borrador:null };
 let CLOUD = { on:false, db:null, fns:null, unsubs:[], error:null, arrancada:{} };
 
@@ -361,7 +333,7 @@ function clientesConocidos(){
   const m = new Map();
   DATA.pedidos.slice().sort((a,b) => b.ts - a.ts).forEach(p => {
     const k = (p.cliente || '').trim().toLowerCase();
-    if(k && !m.has(k)) m.set(k, { cliente:p.cliente, tel:p.tel || '', dir:p.dir || '' });
+    if(k && !m.has(k)) m.set(k, { cliente:p.cliente, dir:p.dir || '' });
   });
   return Array.from(m.values());
 }
@@ -458,7 +430,6 @@ function salsasPendientes(p){
 function cardPedido(p){
   const e = ESTADOS[p.estado] || ESTADOS.nuevo;
   const falta = salsasPendientes(p);
-  const wa = p.estado === 'entregado' ? null : linkWhatsApp(p.tel, mensajeCliente(p));
   return '<div data-pedido="' + p.id + '" class="bg-ink-800 border border-ink-600 rounded-2xl p-3 active:bg-ink-700">' +
     '<div class="flex items-start gap-2">' +
       '<span class="shrink-0 w-8 h-8 rounded-lg bg-ink-700 grid place-items-center text-sm font-extrabold tabular">' + (p.num || '?') + '</span>' +
@@ -479,7 +450,6 @@ function cardPedido(p){
               : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold border border-bad/30 bg-bad/10 text-bad">Falta pago</span>') +
       (falta ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold border border-warn/30 bg-warn/10 text-warn">Faltan salsas</span>' : '') +
       '<div class="flex-1"></div>' +
-      (wa ? '<a href="' + wa + '" target="whatsapp" rel="noopener" data-stop class="px-2.5 py-1.5 rounded-lg bg-ink-700 border border-ink-600 text-xs font-bold active:bg-ink-600 hover:bg-ink-600" title="Avisar que sale">💬</a>' : '') +
       (e.next ? '<button data-avanzar="' + p.id + '" class="px-3 py-1.5 rounded-lg bg-dr-500 text-ink-900 text-xs font-extrabold active:scale-95 transition">' + e.accion + '</button>' : '') +
     '</div>' +
   '</div>';
@@ -742,7 +712,7 @@ function abrirPedido(id){
   UI.borrador = p
     ? JSON.parse(JSON.stringify(p))
     : { id:uid(), num:proximoNum(jornadaHoy()), jornada:jornadaHoy(), ts:Date.now(),
-        cliente:'', tel:'', dir:'', notas:'', items:[], envio:Number(CFG.envio) || 0,
+        cliente:'', dir:'', notas:'', items:[], envio:0,
         pago:'', estado:'nuevo' };
   abrirSheet(p ? 'Pedido #' + p.num : 'Nuevo pedido', formPedidoHTML(!!p));
   renderBorrador();
@@ -769,13 +739,9 @@ function formPedidoHTML(esEdicion){
 
   return '<datalist id="dlClientes">' + cls.map(c => '<option value="' + esc(c.cliente) + '"></option>').join('') + '</datalist>' +
 
-    '<div class="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-6 lg:gap-3">' +
-      '<div class="lg:col-span-2"><label class="lbl">Cliente</label><input id="inpCliente" list="dlClientes" class="fld" placeholder="Nombre" autocomplete="off" value="' + esc(b.cliente) + '"></div>' +
-      '<div class="grid grid-cols-2 gap-3 lg:contents">' +
-        '<div><label class="lbl">Teléfono</label><input id="inpTel" class="fld" inputmode="tel" placeholder="09X XXX XXX" value="' + esc(b.tel) + '"></div>' +
-        '<div><label class="lbl">Envío</label><input id="inpEnvio" class="fld tabular" inputmode="numeric" placeholder="0" value="' + (b.envio || '') + '"></div>' +
-      '</div>' +
-      '<div class="lg:col-span-2"><label class="lbl">Dirección</label><input id="inpDir" class="fld" placeholder="Calle y número, referencias" value="' + esc(b.dir) + '"></div>' +
+    '<div class="space-y-3 lg:space-y-0 lg:grid lg:grid-cols-2 lg:gap-3">' +
+      '<div><label class="lbl">Cliente</label><input id="inpCliente" list="dlClientes" class="fld" placeholder="Nombre" autocomplete="off" value="' + esc(b.cliente) + '"></div>' +
+      '<div><label class="lbl">Dirección</label><input id="inpDir" class="fld" placeholder="Calle y número, referencias" value="' + esc(b.dir) + '"></div>' +
     '</div>' +
 
     /* En la laptop: los productos a la izquierda y el pedido armándose a la
@@ -922,10 +888,8 @@ function tocarSalsa(idx, salsa){
 function guardarPedido(){
   const b = UI.borrador; if(!b) return;
   b.cliente = ($('#inpCliente') || {}).value || '';
-  b.tel     = ($('#inpTel') || {}).value || '';
   b.dir     = ($('#inpDir') || {}).value || '';
   b.notas   = ($('#inpNotas') || {}).value || '';
-  b.envio   = Number(($('#inpEnvio') || {}).value) || 0;
   if(!b.items.length) return toast('Agregá al menos un producto');
   if(!b.cliente.trim()) return toast('Falta el nombre del cliente');
   b.total = totalPedido(b);
@@ -1009,18 +973,6 @@ function abrirAjustes(){
   abrirSheet('Ajustes',
     '<div class="space-y-5">' +
 
-      '<div>' +
-        '<label class="lbl">Costo de envío por defecto</label>' +
-        '<input id="cfEnvio" class="fld tabular" inputmode="numeric" value="' + (CFG.envio || 0) + '">' +
-        '<p class="text-[11px] text-zinc-500 mt-1">Se carga solo en cada pedido nuevo. Podés cambiarlo pedido por pedido.</p>' +
-      '</div>' +
-
-      '<div>' +
-        '<label class="lbl">Mensaje al cliente</label>' +
-        '<textarea id="cfMsg" class="fld" rows="3">' + esc(CFG.msgSalida || MSG_SALIDA) + '</textarea>' +
-        '<p class="text-[11px] text-zinc-500 mt-1">Es lo que manda el botón 💬 de cada pedido. Podés usar <span class="font-mono text-dr-400">{cliente}</span>, <span class="font-mono text-dr-400">{total}</span> y <span class="font-mono text-dr-400">{pedido}</span>.</p>' +
-      '</div>' +
-
       '<div class="border-t border-ink-700 pt-4">' +
         '<div class="flex items-center justify-between mb-1">' +
           '<label class="lbl mb-0">Sincronizar entre celulares</label>' +
@@ -1089,9 +1041,6 @@ function parseConfigFirebase(txt){
 }
 
 function guardarAjustes(){
-  CFG.envio = Number(($('#cfEnvio') || {}).value) || 0;
-  const m = ($('#cfMsg') || {}).value;
-  if(m !== undefined) CFG.msgSalida = m.trim();
   saveLocal('config');
 }
 
@@ -1356,8 +1305,6 @@ document.addEventListener('click', ev => {
     return;
   }
 
-  if(cl('[data-stop]')) return;   /* el link de WhatsApp no abre el editor */
-
   const card = cl('[data-pedido]');
   if(card){ abrirPedido(card.dataset.pedido); return; }
 
@@ -1550,17 +1497,13 @@ document.addEventListener('change', ev => {
   if(ev.target.id === 'selJornada'){ UI.jornadaCaja = ev.target.value; renderCaja(); }
   if(ev.target.id === 'selMes'){ UI.mesCaja = ev.target.value; renderCaja(); }
   if(ev.target.id === 'cfFile' && ev.target.files[0]) importarDatos(ev.target.files[0]);
-  if(ev.target.id === 'cfEnvio' || ev.target.id === 'cfMsg') guardarAjustes();
 });
 
 /* Completa teléfono y dirección al elegir un cliente ya conocido. */
 document.addEventListener('input', ev => {
   if(ev.target.id !== 'inpCliente') return;
   const c = clientesConocidos().find(x => x.cliente.toLowerCase() === ev.target.value.trim().toLowerCase());
-  if(c){
-    if(!$('#inpTel').value) $('#inpTel').value = c.tel;
-    if(!$('#inpDir').value) $('#inpDir').value = c.dir;
-  }
+  if(c && !$('#inpDir').value) $('#inpDir').value = c.dir;
 });
 
 /* ============================ INIT ============================ */
